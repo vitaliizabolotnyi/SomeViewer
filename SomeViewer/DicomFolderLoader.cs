@@ -14,6 +14,12 @@ public sealed class DicomSeries
     public int Depth => Slices.Count;
     public double RescaleSlope { get; init; } = 1.0;
     public double RescaleIntercept { get; init; }
+
+    // Physical voxel spacing in millimeters, used to render the volume with the
+    // correct proportions (CT slice spacing usually differs from in-plane spacing).
+    public double PixelSpacingX { get; init; } = 1.0; // between columns (X)
+    public double PixelSpacingY { get; init; } = 1.0; // between rows (Y)
+    public double SliceSpacing { get; init; } = 1.0;  // between slices (Z)
 }
 
 /// <summary>
@@ -45,6 +51,20 @@ public static class DicomFolderLoader
             .Select(group =>
             {
                 var first = group.First();
+                var sortedSlices = group
+                    .OrderBy(ComputeSliceLocation)
+                    .ThenBy(ds => ds.GetSingleValueOrDefault(DicomTag.InstanceNumber, 0))
+                    .ToList();
+
+                // PixelSpacing is [rowSpacing (Y), columnSpacing (X)] in mm.
+                double spacingY = 1.0;
+                double spacingX = 1.0;
+                if (first.TryGetValues(DicomTag.PixelSpacing, out double[] ps) && ps.Length == 2)
+                {
+                    spacingY = ps[0];
+                    spacingX = ps[1];
+                }
+
                 return new DicomSeries
                 {
                     SeriesInstanceUid = group.Key,
@@ -52,10 +72,10 @@ public static class DicomFolderLoader
                     Rows = first.GetSingleValueOrDefault<ushort>(DicomTag.Rows, 0),
                     RescaleSlope = first.GetSingleValueOrDefault(DicomTag.RescaleSlope, 1.0),
                     RescaleIntercept = first.GetSingleValueOrDefault(DicomTag.RescaleIntercept, 0.0),
-                    Slices = group
-                        .OrderBy(ComputeSliceLocation)
-                        .ThenBy(ds => ds.GetSingleValueOrDefault(DicomTag.InstanceNumber, 0))
-                        .ToList(),
+                    PixelSpacingX = spacingX,
+                    PixelSpacingY = spacingY,
+                    SliceSpacing = ComputeSliceSpacing(sortedSlices),
+                    Slices = sortedSlices,
                 };
             })
             .ToList();
@@ -98,6 +118,33 @@ public static class DicomFolderLoader
         return ds.TryGetSingleValue(DicomTag.SliceLocation, out double loc)
             ? loc
             : ds.GetSingleValueOrDefault(DicomTag.InstanceNumber, 0);
+    }
+
+    // Z spacing in mm. Prefer the geometric distance between the first two sorted
+    // slice positions (most reliable), then fall back to the standard tags.
+    private static double ComputeSliceSpacing(IReadOnlyList<DicomDataset> sortedSlices)
+    {
+        if (sortedSlices.Count >= 2)
+        {
+            double gap = Math.Abs(ComputeSliceLocation(sortedSlices[1]) - ComputeSliceLocation(sortedSlices[0]));
+            if (gap > 1e-4)
+            {
+                return gap;
+            }
+        }
+
+        var first = sortedSlices[0];
+        if (first.TryGetSingleValue(DicomTag.SpacingBetweenSlices, out double sbs) && sbs > 1e-4)
+        {
+            return sbs;
+        }
+
+        if (first.TryGetSingleValue(DicomTag.SliceThickness, out double thickness) && thickness > 1e-4)
+        {
+            return thickness;
+        }
+
+        return 1.0;
     }
 
     private static DicomDataset EnsureUncompressed(DicomDataset dataset)
