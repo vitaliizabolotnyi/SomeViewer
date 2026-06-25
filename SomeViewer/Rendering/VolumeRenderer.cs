@@ -1,4 +1,3 @@
-using LearnOpenTK.Common;
 using ManagedCuda;
 using ManagedCuda.BasicTypes;
 using ManagedCuda.NVRTC;

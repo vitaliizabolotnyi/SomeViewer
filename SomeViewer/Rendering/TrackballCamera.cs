@@ -4,9 +4,9 @@ namespace SomeViewer.Rendering;
 
 /// <summary>
 /// Trackball/zoom camera for inspecting a volume: the eye orbits a fixed target
-/// (the volume center) at a given distance, but unlike <see cref="OrbitCamera"/>
-/// the orientation is accumulated as a <see cref="Quaternion"/> rather than as
-/// yaw/pitch angles. Each drag rotates about screen-aligned axes relative to the
+/// (the volume center) at a given distance, but the orientation is accumulated as
+/// a <see cref="Quaternion"/> rather than yaw/pitch angles. Each drag rotates about
+/// screen-aligned axes relative to the
 /// current view, so there is no fixed up vector, no pole clamping, no gimbal
 /// lock, and roll accumulates freely — the volume feels glued to the cursor from
 /// any orientation. Uses the same OpenTK view/projection helpers, so it matches
@@ -106,8 +106,8 @@ public sealed class TrackballCamera
     {
         // Place the eye along the camera-local +Z axis at the current distance,
         // then rotate that offset (and the up vector) by the accumulated
-        // orientation. With identity orientation this matches the orbit camera's
-        // starting pose: eye at (0, 0, distance) looking at the target.
+        // orientation. With identity orientation this is a plain front-on pose:
+        // eye at (0, 0, distance) looking at the target.
         Vector3 eye = Target + Vector3.Transform(new Vector3(0f, 0f, _distance), _orientation);
         Vector3 up = Vector3.Transform(Vector3.UnitY, _orientation);
 
