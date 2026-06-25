@@ -2,8 +2,8 @@
 // Output is tightly packed RGBA8 (4 bytes per pixel), so we avoid CUDA vector
 // types that NVRTC would need extra headers for.
 
-// Milestone 2 placeholder: proves the CUDA -> mapped PBO -> texture path by
-// writing an RGBA gradient. Kept as a fallback when no volume is loaded.
+// Fallback test pattern: proves the CUDA -> mapped PBO -> texture path by
+// writing an RGBA gradient. Used when no volume is loaded.
 extern "C" __global__ void fillGradient(
 	unsigned char* __restrict__ output,
 	int width,
@@ -20,11 +20,11 @@ extern "C" __global__ void fillGradient(
 	output[idx + 3] = 255;                                 // A opaque
 }
 
-// Milestone 3 verification: sample one axial slice of the uploaded volume. The
-// volume lives in a CUDA 3D texture (single-channel float, normalized coords),
-// so tex3D returns hardware-filtered densities in [0,1]. Proves the upload and
-// texture binding before the raycaster is added. cudaTextureObject_t is a
-// built-in NVRTC type; tex3D<float> is a built-in device function.
+// Sample one axial slice of the uploaded volume. The volume lives in a CUDA 3D
+// texture (single-channel float, normalized coords), so tex3D returns
+// hardware-filtered densities in [0,1]. Used as a debug view of the upload and
+// texture binding. cudaTextureObject_t is a built-in NVRTC type; tex3D<float> is
+// a built-in device function.
 extern "C" __global__ void sampleVolume(
 	cudaTextureObject_t volume,
 	unsigned char* __restrict__ output,
@@ -50,7 +50,7 @@ extern "C" __global__ void sampleVolume(
 	output[idx + 3] = 255;
 }
 
-// --- Milestone 4: grayscale direct volume rendering (raycasting) ---------------
+// --- Direct volume rendering (raycasting) --------------------------------------
 
 // Unproject a clip-space point (cx, cy, cz, 1) into volume-local space using the
 // inverse model-view-projection matrix. The matrix is row-major (m[i*4+j] = M[i,j])
@@ -132,7 +132,7 @@ extern "C" __global__ void raycastVolume(
 	int idx = (py * width + px) * 4;
 
 	// Pixel center -> NDC [-1, 1]. The PBO's row 0 becomes the texture's bottom
-	// row on upload, so we do NOT flip Y here -> orientation matches the M3 slice.
+	// row on upload, so we do NOT flip Y here -> orientation matches the slice sampler.
 	float ndcX = 2.0f * (px + 0.5f) / width - 1.0f;
 	float ndcY = 2.0f * (py + 0.5f) / height - 1.0f;
 

@@ -14,7 +14,7 @@ namespace SomeViewer
     public class Window : GameWindow
     {
         // DICOM series to upload into the CUDA volume texture. If the folder is
-        // missing the renderer falls back to the Milestone 2 gradient.
+        // missing the renderer falls back to the gradient test pattern.
         private const string DicomFolder = @"C:\dev\data\manifest-1782357116242";
 
         private IRenderer _renderer = null!;
@@ -28,7 +28,7 @@ namespace SomeViewer
         // Key-repeat throttle for window/level and step-size adjustments.
         private double _sinceKeyRepeat;
 
-        // The CUDA primary context is created up front and reused by later milestones.
+        // The CUDA primary context is created up front and reused by the renderer.
         private PrimaryContext _ctx = null!;
 
         // Kept for the preserved WindowLevel example only (see WindowLevelExample); not used by the renderer.
@@ -45,8 +45,8 @@ namespace SomeViewer
         {
             base.OnLoad();
 
-            // Create the CUDA primary context up front; later milestones (the CUDA
-            // raycaster) reuse it. SetCurrent is mandatory for a PrimaryContext.
+            // Create the CUDA primary context up front; the CUDA raycaster reuses
+            // it. SetCurrent is mandatory for a PrimaryContext.
             const int deviceID = 0;
             _ctx = new PrimaryContext(deviceID);
             _ctx.SetCurrent();
@@ -56,9 +56,9 @@ namespace SomeViewer
 
             _camera = new OrbitCamera(distance: 3f, aspectRatio: Size.X / (float)Size.Y);
 
-            // Milestone 3: load the DICOM volume up front so the renderer can
-            // upload it to a CUDA 3D texture. Fall back to the gradient if the
-            // data folder isn't available on this machine.
+            // Load the DICOM volume up front so the renderer can upload it to a
+            // CUDA 3D texture. Fall back to the gradient if the data folder isn't
+            // available on this machine.
             VolumeData? volume = TryLoadVolume();
 
             var volumeRenderer = new VolumeRenderer(_ctx, volume);

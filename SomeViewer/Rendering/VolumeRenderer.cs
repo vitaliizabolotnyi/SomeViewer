@@ -14,18 +14,13 @@ namespace SomeViewer.Rendering;
 /// buffer object (PBO) registered for CUDA↔GL interop; the PBO is copied into a
 /// texture and drawn on a fullscreen quad.
 ///
-/// Milestone 3: when a volume is supplied it is uploaded into a CUDA 3D texture
-/// and the <c>sampleVolume</c> kernel renders its middle axial slice to verify
-/// the upload. With no volume it falls back to the Milestone 2 <c>fillGradient</c>
-/// kernel.
-///
-/// Milestone 4: with a volume loaded the <c>raycastVolume</c> kernel performs
-/// direct volume rendering. The model/view/projection passed to
-/// <see cref="Render"/> is inverted and uploaded so the kernel can build eye rays.
-///
-/// Milestone 5: a 1D RGBA transfer function (<see cref="TransferFunction"/>) is
-/// uploaded as a LUT and sampled per step to map density to color and opacity,
-/// producing a colored rendering.
+/// When a volume is supplied it is uploaded into a CUDA 3D texture and the
+/// <c>raycastVolume</c> kernel performs direct volume rendering: the
+/// model/view/projection passed to <see cref="Render"/> is inverted so the kernel
+/// can build eye rays, and a 1D RGBA transfer function (<see cref="TransferFunction"/>)
+/// uploaded as a LUT maps each sampled density to color and opacity. With no volume
+/// it falls back to the <c>fillGradient</c> test pattern; a debug toggle can swap
+/// the raycaster for the <c>sampleVolume</c> middle-slice kernel.
 /// </summary>
 public sealed class VolumeRenderer : IRenderer
 {
@@ -44,9 +39,9 @@ public sealed class VolumeRenderer : IRenderer
     private readonly PrimaryContext _ctx;
     private readonly VolumeData? _volume;
 
-    // Raycast tuning, adjustable at runtime (Milestone 6). stepSize is in
-    // volume-local units (the box spans 1.0); densityScale converts a normalized
-    // sample into per-step opacity; window center/width remap density in [0,1].
+    // Raycast tuning, adjustable at runtime. stepSize is in volume-local units
+    // (the box spans 1.0); densityScale converts a normalized sample into per-step
+    // opacity; window center/width remap density in [0,1].
     private float _stepSize = 0.004f;
     private float _densityScale = 100f;
     private float _windowCenter = 0.5f;
@@ -71,7 +66,7 @@ public sealed class VolumeRenderer : IRenderer
     // voxel spacing), so the depth axis isn't stretched. Baked into the model.
     private Matrix4 _extentScale = Matrix4.Identity;
 
-    // Debug toggle: false renders the M3 middle-slice sampler instead of the raycaster.
+    // Debug toggle: false renders the middle-slice sampler instead of the raycaster.
     private bool _useRaycast = true;
 
     private int _vertexArrayObject;
@@ -134,7 +129,7 @@ public sealed class VolumeRenderer : IRenderer
         CreateQuad();
         CreateScreenResources();
 
-        // Milestone 3: upload the volume into a CUDA 3D texture once, up front.
+        // Upload the volume into a CUDA 3D texture once, up front.
         if (_volume != null)
         {
             _volumeTexture = new CudaVolumeTexture(_volume);
@@ -144,7 +139,7 @@ public sealed class VolumeRenderer : IRenderer
             // anisotropic spacing (e.g. thick CT slices) isn't stretched in Z.
             _extentScale = Matrix4.CreateScale(_volume.NormalizedExtent);
 
-            // Milestone 5: upload the transfer-function LUT once (static for now).
+            // Upload the transfer-function LUT once (static for now).
             _lutDevice = new CudaDeviceVariable<float>(_transferFunction.Lut.Length);
             _lutDevice.CopyToDevice(_transferFunction.Lut);
         }
@@ -182,11 +177,10 @@ public sealed class VolumeRenderer : IRenderer
         {
             if (_useRaycast)
             {
-                // Milestone 4/5/6: colored DVR with window/level. Upload
-                // inv(model*view*projection) so the kernel can unproject pixels
-                // into volume-local space. The extent scale (leftmost, applied
-                // first in OpenTK's row-vector convention) gives the volume its
-                // real physical proportions instead of a cube.
+                // Colored DVR with window/level. Upload inv(model*view*projection)
+                // so the kernel can unproject pixels into volume-local space. The
+                // extent scale (leftmost, applied first in OpenTK's row-vector
+                // convention) gives the volume its real physical proportions instead of a cube.
                 UploadInverseMvp(_extentScale * model * view * projection);
 
                 _raycastKernel.BlockDimensions = blockDim;
@@ -206,7 +200,7 @@ public sealed class VolumeRenderer : IRenderer
             }
             else
             {
-                // Milestone 3: render the middle axial slice of the uploaded volume.
+                // Render the middle axial slice of the uploaded volume.
                 _sampleKernel.BlockDimensions = blockDim;
                 _sampleKernel.GridDimensions = gridDim;
                 _sampleKernel.Run(_volumeTexture.TexObject, output, _width, _height, 0.5f);
@@ -214,7 +208,7 @@ public sealed class VolumeRenderer : IRenderer
         }
         else
         {
-            // Milestone 2 fallback: gradient test pattern.
+            // Fallback: gradient test pattern.
             _fillKernel.BlockDimensions = blockDim;
             _fillKernel.GridDimensions = gridDim;
             _fillKernel.Run(output, _width, _height);

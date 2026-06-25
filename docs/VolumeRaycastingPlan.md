@@ -25,7 +25,6 @@ milestone is independently runnable so we can verify before moving on.
 - `SomeViewer/Rendering/IRenderer.cs` — rendering seam (`Load` / `Render` /
   `Resize` / `Dispose`). `Window` becomes a thin host that owns a camera and
   delegates to the active `IRenderer`.
-- `SomeViewer/Rendering/CubeRenderer.cs` — Milestone 1 proxy cube.
 - `SomeViewer/Rendering/OrbitCamera.cs` — orbit/zoom camera for volume inspection.
 - `SomeViewer/Rendering/VolumeRenderer.cs` — CUDA renderer (M2 gradient + M3
   middle-slice volume sample today; raycaster later, same seam).

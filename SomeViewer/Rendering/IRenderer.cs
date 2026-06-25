@@ -4,8 +4,7 @@ namespace SomeViewer.Rendering;
 
 /// <summary>
 /// Minimal rendering seam. The <see cref="Window"/> owns a camera and delegates
-/// drawing to the active renderer. Milestone 1 uses <see cref="CubeRenderer"/>;
-/// later milestones add a CUDA-backed volume renderer behind the same interface.
+/// drawing to the active renderer, the CUDA-backed <see cref="VolumeRenderer"/>.
 /// </summary>
 public interface IRenderer : IDisposable
 {

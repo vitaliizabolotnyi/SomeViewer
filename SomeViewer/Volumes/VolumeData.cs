@@ -6,7 +6,7 @@ using OpenTK.Mathematics;
 /// CPU-side volume model: dimensions plus a normalized [0,1] density per voxel,
 /// stored z-major (index = z*Width*Height + y*Width + x — exactly the layout
 /// <see cref="DicomFolderLoader.LoadVolumeInt16"/> produces). The raw intensity
-/// range is kept so later milestones can map densities back for window/level.
+/// range is kept so densities can be mapped back for window/level.
 /// </summary>
 public sealed class VolumeData
 {
