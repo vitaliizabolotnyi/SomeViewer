@@ -18,10 +18,10 @@ namespace SomeViewer
         private const string DicomFolder = @"C:\dev\data\manifest-1782357116242";
 
         private IRenderer _renderer = null!;
-        private OrbitCamera _camera = null!;
+        private TrackballCamera _camera = null!;
         private VolumeRenderer? _volumeRenderer;
 
-        // Drag-to-orbit state.
+        // Drag-to-rotate state.
         private bool _dragging;
         private Vector2 _lastMousePos;
 
@@ -54,7 +54,7 @@ namespace SomeViewer
             GL.ClearColor(0.1f, 0.1f, 0.12f, 1.0f);
             GL.Enable(EnableCap.DepthTest);
 
-            _camera = new OrbitCamera(distance: 3f, aspectRatio: Size.X / (float)Size.Y);
+            _camera = new TrackballCamera(distance: 3f, aspectRatio: Size.X / (float)Size.Y);
 
             // Load the DICOM volume up front so the renderer can upload it to a
             // CUDA 3D texture. Fall back to the gradient if the data folder isn't
@@ -99,7 +99,7 @@ namespace SomeViewer
 
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-            // The orbit camera drives the view now, so the model stays put.
+            // The trackball camera drives the view now, so the model stays put.
             _renderer.Render(Matrix4.Identity, _camera.GetViewMatrix(), _camera.GetProjectionMatrix());
 
             SwapBuffers();
@@ -225,12 +225,14 @@ namespace SomeViewer
                 return;
             }
 
-            // Pixel drag -> orbit radians. Negate so the volume follows the cursor.
+            // Pixel drag -> trackball rotation (radians). Pass the raw drag delta
+            // (right/down positive); the camera picks signs so the volume follows
+            // the cursor and rotates about screen-aligned axes from any angle.
             const float sensitivity = 0.0035f;
             Vector2 delta = MousePosition - _lastMousePos;
             _lastMousePos = MousePosition;
 
-            _camera.Orbit(-delta.X * sensitivity, -delta.Y * sensitivity);
+            _camera.Rotate(delta.X * sensitivity, delta.Y * sensitivity);
             UpdateTitle();
         }
 
@@ -251,8 +253,11 @@ namespace SomeViewer
                 return;
             }
 
-            Title = $"SomeViewer — Drag: orbit | Scroll: zoom | Arrows: window/level | [ ]: step | O: ortho | R: reset   " +
-                    $"(yaw {MathHelper.RadiansToDegrees(_camera.Yaw):0.0}°, pitch {MathHelper.RadiansToDegrees(_camera.Pitch):0.0}°, " +
+            float rotationDegrees = MathHelper.RadiansToDegrees(
+                2f * MathF.Acos(MathHelper.Clamp(_camera.Orientation.W, -1f, 1f)));
+
+            Title = $"SomeViewer — Drag: trackball | Scroll: zoom | Arrows: window/level | [ ]: step | O: ortho | R: reset   " +
+                    $"(rot {rotationDegrees:0.0}°, " +
                     $"zoom {_camera.ZoomFactor:0.00}x, dist {_camera.Distance:0.00}, " +
                     $"{(_camera.Orthographic ? "ortho" : "persp")}, " +
                     $"center {_volumeRenderer.WindowCenter:0.00}, width {_volumeRenderer.WindowWidth:0.00}, " +
