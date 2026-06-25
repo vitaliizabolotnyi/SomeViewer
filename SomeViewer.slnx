@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Common/Common.csproj" />
+  <Project Path="SomeViewer/SomeViewer.csproj" />
+</Solution>
