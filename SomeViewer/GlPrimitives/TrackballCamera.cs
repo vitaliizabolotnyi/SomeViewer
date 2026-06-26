@@ -1,6 +1,6 @@
 using OpenTK.Mathematics;
 
-namespace SomeViewer.Rendering;
+namespace SomeViewer.GlPrimitives;
 
 /// <summary>
 /// Trackball/zoom camera for inspecting a volume: the eye orbits a fixed target

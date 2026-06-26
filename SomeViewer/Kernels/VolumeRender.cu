@@ -20,7 +20,65 @@ extern "C" __global__ void fillGradient(
 	output[idx + 3] = 255;                                 // A opaque
 }
 
-// Sample one axial slice of the uploaded volume. The volume lives in a CUDA 3D
+// Animated plasma: four overlapping sine-wave fields driven by 'time' (seconds).
+// Each pixel computes a weighted sum of sinusoidal surfaces, normalised to [0,1],
+// then mapped through a three-phase colour palette (r/g/b shifted by 2pi/3) for
+// smooth, continuously looping colour cycling.
+//
+// Formula breakdown:
+//   w  = sin(6pi*u + t)                           horizontal standing wave
+//      + sin(6pi*v + 1.5t)                        vertical standing wave
+//      + sin(4pi*(u+v) + 0.8t)                    diagonal interference
+//      + sin(18pi*dist(p, moving_centre) - 2.5t)  radial ripple from orbiting point
+// The moving centre traces an ellipse: cx = 0.5 + 0.4*cos(0.7t),
+//                                      cy = 0.5 + 0.4*sin(0.5t).
+// w lies in [-4, 4]; it is remapped to [0,1] and fed into:
+//   R = 0.5 + 0.5*sin(2pi*t')
+//   G = 0.5 + 0.5*sin(2pi*t' + 2pi/3)
+//   B = 0.5 + 0.5*sin(2pi*t' + 4pi/3)
+extern "C" __global__ void animatedWaves(
+	unsigned char* __restrict__ output,
+	int width,
+	int height,
+	float time)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if (x >= width || y >= height) return;
+
+	// Normalised pixel coordinates in [0, 1].
+	float u = (x + 0.5f) / width;
+	float v = (y + 0.5f) / height;
+
+	const float PI = 3.14159265f;
+
+	// Four overlapping sine fields.
+	float w = sinf(u * 6.0f * PI + time);
+	w += sinf(v * 6.0f * PI + time * 1.5f);
+	w += sinf((u + v) * 4.0f * PI + time * 0.8f);
+
+	// Radial ripple from an orbiting centre.
+	float cx   = 0.5f + 0.4f * cosf(time * 0.7f);
+	float cy   = 0.5f + 0.4f * sinf(time * 0.5f);
+	float dist = sqrtf((u - cx) * (u - cx) + (v - cy) * (v - cy));
+	w += sinf(dist * 18.0f * PI - time * 2.5f);
+
+	// Map [-4, 4] -> [0, 1].
+	float t = (w + 4.0f) * 0.125f;
+
+	// Three-phase sine colour palette: R, G, B offset by 2pi/3 each.
+	float r = 0.5f + 0.5f * sinf(2.0f * PI * t);
+	float g = 0.5f + 0.5f * sinf(2.0f * PI * t + 2.0943951f);   // 2pi/3
+	float b = 0.5f + 0.5f * sinf(2.0f * PI * t + 4.1887902f);   // 4pi/3
+
+	int idx = (y * width + x) * 4;
+	output[idx + 0] = (unsigned char)(255.0f * r);
+	output[idx + 1] = (unsigned char)(255.0f * g);
+	output[idx + 2] = (unsigned char)(255.0f * b);
+	output[idx + 3] = 255;
+}
+
+// Sample one axial slice of the uploaded volume.
 // texture (single-channel float, normalized coords), so tex3D returns
 // hardware-filtered densities in [0,1]. Used as a debug view of the upload and
 // texture binding. cudaTextureObject_t is a built-in NVRTC type; tex3D<float> is

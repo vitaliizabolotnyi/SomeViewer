@@ -1,13 +1,14 @@
 ﻿using ManagedCuda;
-using ManagedCuda.NVRTC;
-using ManagedCuda.VectorTypes;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using SomeViewer.GlPrimitives;
+using SomeViewer.Model;
 using SomeViewer.Rendering;
-using SomeViewer.Volumes;
+using SomeViewer.Scenes;
+using SomeViewer.Services;
 
 namespace SomeViewer
 {
@@ -15,11 +16,16 @@ namespace SomeViewer
     {
         // DICOM series to upload into the CUDA volume texture. If the folder is
         // missing the renderer falls back to the gradient test pattern.
-        private const string DicomFolder = @"C:\dev\data\manifest-1782357116242";
+        private const string DicomFolderCT = @"C:\dev\data\manifest-1782357116242";
+        private const string DicomFolderMR = @"C:\dev\data\manifest-1782447338589";
 
-        private IRenderer _renderer = null!;
         private TrackballCamera _camera = null!;
-        private VolumeRenderer? _volumeRenderer;
+        private ScenesController _scenes = null!;
+
+        // CPU-side volume, loaded once and cached so scene switches can re-upload
+        // it to a CUDA 3D texture without re-reading the DICOM folder from disk.
+        private VolumeData? _volume1;
+        //private VolumeData? _volume2;
 
         // Drag-to-rotate state.
         private bool _dragging;
@@ -30,11 +36,6 @@ namespace SomeViewer
 
         // The CUDA primary context is created up front and reused by the renderer.
         private PrimaryContext _ctx = null!;
-
-        // Kept for the preserved WindowLevel example only (see WindowLevelExample); not used by the renderer.
-        private CudaKernel? _kernel;
-        private CudaDeviceVariable<short>? _dInput;
-        private CudaDeviceVariable<byte>? _dOutput;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
@@ -56,31 +57,53 @@ namespace SomeViewer
 
             _camera = new TrackballCamera(distance: 3f, aspectRatio: Size.X / (float)Size.Y);
 
-            // Load the DICOM volume up front so the renderer can upload it to a
-            // CUDA 3D texture. Fall back to the gradient if the data folder isn't
-            // available on this machine.
-            VolumeData? volume = TryLoadVolume();
+            // Load the DICOM volume up front and cache it so scene switches can
+            // re-upload it without re-reading the folder. Fall back to a single
+            // gradient scene if the data folder isn't available on this machine.
+            _volume1 = TryLoadVolume(DicomFolderCT);
+            //_volume2 = TryLoadVolume(DicomFolderMR);
 
-            var volumeRenderer = new VolumeRenderer(_ctx, volume);
-            _volumeRenderer = volumeRenderer;
-            _renderer = volumeRenderer;
-            _renderer.Load(Size.X, Size.Y);
+            _scenes = new ScenesController(BuildScenes(_volume1, null));
+            _scenes.Activate(0, Size.X, Size.Y);
 
             UpdateTitle();
         }
 
-        private static VolumeData? TryLoadVolume()
+        // Builds the switchable scene list shown on keys 1/2/3. With a volume
+        // loaded: raycast DVR, the middle-slice sampler, and the gradient pattern
+        // (the gradient slot is where a cube/proxy scene can live later). Without
+        // a volume, only the gradient scene is registered.
+        private IReadOnlyList<Scene> BuildScenes(VolumeData? volume1, VolumeData? volume2)
         {
-            if (!Directory.Exists(DicomFolder))
+            if (volume1 == null)// || volume2 == null)
             {
-                Console.WriteLine($"DICOM folder '{DicomFolder}' not found; rendering gradient fallback.");
+                return new[]
+                {
+                    new Scene("Gradient", () => new GradientRenderer(_ctx)),
+                };
+            }
+
+            return new[]
+            {
+                new Scene("Raycast DVR CT", () => new RaycastVolumeRenderer(_ctx, volume1)),
+                //new Scene("Raycast DVR MR", () => new RaycastVolumeRenderer(_ctx, volume2)),
+                new Scene("Middle Slice", () => new SliceVolumeRenderer(_ctx, volume1)),
+                new Scene("Gradient", () => new GradientRenderer(_ctx)),
+            };
+        }
+
+        private static VolumeData? TryLoadVolume(string dicomDir)
+        {
+            if (!Directory.Exists(dicomDir))
+            {
+                Console.WriteLine($"DICOM folder '{dicomDir}' not found; rendering gradient fallback.");
                 return null;
             }
 
             try
             {
                 IVolumeDataService volumeService = new DicomVolumeDataService();
-                VolumeData volume = volumeService.Load(DicomFolder);
+                VolumeData volume = volumeService.Load(dicomDir);
                 Console.WriteLine($"Loaded volume {volume.Width}x{volume.Height}x{volume.Depth} " +
                                   $"(intensity {volume.MinValue}..{volume.MaxValue}).");
                 return volume;
@@ -100,7 +123,7 @@ namespace SomeViewer
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
             // The trackball camera drives the view now, so the model stays put.
-            _renderer.Render(Matrix4.Identity, _camera.GetViewMatrix(), _camera.GetProjectionMatrix());
+            _scenes.Render(Matrix4.Identity, _camera.GetViewMatrix(), _camera.GetProjectionMatrix());
 
             SwapBuffers();
         }
@@ -117,20 +140,34 @@ namespace SomeViewer
             HandleSettingKeys(e.Time);
         }
 
-        // Window/level and step-size keys. Held keys repeat on a short timer so
-        // adjustments are smooth without flying off after a single press.
+        // Scene switching plus window/level and step-size keys. Held keys repeat
+        // on a short timer so adjustments are smooth without flying off after a
+        // single press.
         private void HandleSettingKeys(double dt)
         {
-            if (_volumeRenderer == null)
+            // Scene switching (1/2/3): one-shot. Switching recreates the active
+            // renderer (compile/upload on switch); out-of-range keys are ignored.
+            if (KeyboardState.IsKeyPressed(Keys.D1))
             {
-                return;
+                SwitchScene(0);
             }
+            else if (KeyboardState.IsKeyPressed(Keys.D2))
+            {
+                SwitchScene(1);
+            }
+            else if (KeyboardState.IsKeyPressed(Keys.D3))
+            {
+                SwitchScene(2);
+            }
+
+            // Window/level and step-size apply only to scenes that support them.
+            var controls = _scenes.ActiveRenderer as IVolumeControls;
 
             // Reset is a one-shot, not throttled.
             if (KeyboardState.IsKeyPressed(Keys.R))
             {
                 _camera.Reset();
-                _volumeRenderer.ResetSettings();
+                controls?.ResetSettings();
                 UpdateTitle();
             }
 
@@ -140,6 +177,11 @@ namespace SomeViewer
             {
                 _camera.ToggleOrthographic();
                 UpdateTitle();
+            }
+
+            if (controls == null)
+            {
+                return;
             }
 
             _sinceKeyRepeat += dt;
@@ -154,38 +196,38 @@ namespace SomeViewer
             // Window level (center): Up/Down. Window width: Left/Right.
             if (KeyboardState.IsKeyDown(Keys.Up))
             {
-                _volumeRenderer.AdjustWindowCenter(0.01f);
+                controls.AdjustWindowCenter(0.01f);
                 changed = true;
             }
 
             if (KeyboardState.IsKeyDown(Keys.Down))
             {
-                _volumeRenderer.AdjustWindowCenter(-0.01f);
+                controls.AdjustWindowCenter(-0.01f);
                 changed = true;
             }
 
             if (KeyboardState.IsKeyDown(Keys.Right))
             {
-                _volumeRenderer.AdjustWindowWidth(0.01f);
+                controls.AdjustWindowWidth(0.01f);
                 changed = true;
             }
 
             if (KeyboardState.IsKeyDown(Keys.Left))
             {
-                _volumeRenderer.AdjustWindowWidth(-0.01f);
+                controls.AdjustWindowWidth(-0.01f);
                 changed = true;
             }
 
             // Step size (quality vs. speed): '[' finer, ']' coarser.
             if (KeyboardState.IsKeyDown(Keys.LeftBracket))
             {
-                _volumeRenderer.ScaleStepSize(0.9f);
+                controls.ScaleStepSize(0.9f);
                 changed = true;
             }
 
             if (KeyboardState.IsKeyDown(Keys.RightBracket))
             {
-                _volumeRenderer.ScaleStepSize(1.1f);
+                controls.ScaleStepSize(1.1f);
                 changed = true;
             }
 
@@ -193,6 +235,14 @@ namespace SomeViewer
             {
                 UpdateTitle();
             }
+        }
+
+        // Switch to the scene at the given index (no-op if already active or out
+        // of range) and refresh the title.
+        private void SwitchScene(int index)
+        {
+            _scenes.Activate(index, Size.X, Size.Y);
+            UpdateTitle();
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -247,21 +297,17 @@ namespace SomeViewer
 
         private void UpdateTitle()
         {
-            if (_volumeRenderer == null)
-            {
-                Title = "SomeViewer";
-                return;
-            }
-
             float rotationDegrees = MathHelper.RadiansToDegrees(
                 2f * MathF.Acos(MathHelper.Clamp(_camera.Orientation.W, -1f, 1f)));
 
-            Title = $"SomeViewer — Drag: trackball | Scroll: zoom | Arrows: window/level | [ ]: step | O: ortho | R: reset   " +
-                    $"(rot {rotationDegrees:0.0}°, " +
-                    $"zoom {_camera.ZoomFactor:0.00}x, dist {_camera.Distance:0.00}, " +
-                    $"{(_camera.Orthographic ? "ortho" : "persp")}, " +
-                    $"center {_volumeRenderer.WindowCenter:0.00}, width {_volumeRenderer.WindowWidth:0.00}, " +
-                    $"step {_volumeRenderer.StepSize:0.0000})";
+            // Window/level/step read-outs only apply to scenes that expose controls.
+            string tuning = _scenes.ActiveRenderer is IVolumeControls c
+                ? $", center {c.WindowCenter:0.00}, width {c.WindowWidth:0.00}, step {c.StepSize:0.0000}"
+                : string.Empty;
+
+            Title = $"SomeViewer — [{_scenes.ActiveName}] | 1/2/3: scene | Drag: trackball | Scroll: zoom | " +
+                    $"Arrows: window/level | [ ]: step | O: ortho | R: reset   " +
+                    $"{(_camera.Orthographic ? "ortho" : "persp")}{tuning})";
         }
 
         protected override void OnResize(ResizeEventArgs e)
@@ -271,7 +317,7 @@ namespace SomeViewer
             GL.Viewport(0, 0, Size.X, Size.Y);
 
             _camera.AspectRatio = Size.X / (float)Size.Y;
-            _renderer.Resize(Size.X, Size.Y);
+            _scenes.Resize(Size.X, Size.Y);
         }
 
         protected override void OnUnload()
@@ -280,59 +326,12 @@ namespace SomeViewer
             GL.BindVertexArray(0);
             GL.UseProgram(0);
 
-            _renderer?.Dispose();
+            _scenes?.Dispose();
 
             // Release CUDA resources.
-            _dInput?.Dispose();
-            _dOutput?.Dispose();
             _ctx?.Dispose();
 
             base.OnUnload();
-        }
-
-        // Preserved example only — the original window/level pass over the DICOM
-        // volume. Intentionally NOT called; kept for reference per project notes.
-        // The CUDA raycaster (see docs/VolumeRaycastingPlan.md) replaces this.
-        private void WindowLevelExample()
-        {
-            // load the DICOM series from the manifest folder
-            const string DicomFolder = @"C:\dev\data\manifest-1782357116242";
-
-            var allSeries = DicomFolderLoader.LoadFolder(DicomFolder);
-            var series = allSeries[0]; // pick the first series to view
-
-            short[] volume = DicomFolderLoader.LoadVolumeInt16(series);
-            // volume is [Columns * Rows * Depth], ready to upload to a CudaDeviceVariable<short>
-
-            // compile Kernels/SomeKernel.cu at runtime (NVRTC) AFTER the volume is loaded
-            string kernelPath = Path.Combine(AppContext.BaseDirectory, "Kernels", "SomeKernel.cu");
-            string kernelSource = File.ReadAllText(kernelPath);
-
-            byte[] ptx;
-            using (var rtc = new CudaRuntimeCompiler(kernelSource, "SomeKernel"))
-            {
-                // GTX 1080 is Pascal -> compute_61 / sm_61
-                rtc.Compile(new[] { "--gpu-architecture=compute_61" });
-                ptx = rtc.GetPTX();
-            }
-
-            _kernel = _ctx.LoadKernelPTX(ptx, "WindowLevel");
-
-            // upload the volume and run the kernel on the GPU
-            _dInput = volume;                                   // host -> device copy
-            _dOutput = new CudaDeviceVariable<byte>(volume.Length);
-
-            int threads = 256;
-            _kernel.BlockDimensions = new dim3(threads, 1, 1);
-            _kernel.GridDimensions = new dim3((volume.Length + threads - 1) / threads, 1, 1);
-
-            // arguments must match WindowLevel(short*, uchar*, int, float, float)
-            _kernel.Run(_dInput.DevicePointer, _dOutput.DevicePointer,
-                        volume.Length, 40.0f, 400.0f);
-
-            // _dOutput now holds the windowed 8-bit volume on the GPU,
-            // ready to upload into an OpenGL texture for rendering.
-            // To copy back to the host: byte[] windowed = _dOutput;
         }
     }
 }

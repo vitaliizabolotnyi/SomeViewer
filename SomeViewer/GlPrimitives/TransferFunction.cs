@@ -1,4 +1,4 @@
-namespace SomeViewer.Volumes;
+namespace SomeViewer.GlPrimitives;
 
 /// <summary>
 /// 1D RGBA transfer function: maps a normalized density [0,1] to a color and

@@ -1,16 +1,10 @@
 using OpenTK.Graphics.OpenGL4;
 
-namespace SomeViewer.Rendering;
+namespace SomeViewer.GlPrimitives;
 
-/// <summary>
-/// Minimal GLSL shader-program helper: compiles a vertex+fragment pair, links
-/// them, and caches uniform locations. Replaces the former
-/// <c>LearnOpenTK.Common.Shader</c> so the viewer no longer depends on the
-/// Common project.
-/// </summary>
+// Minimal GLSL shader-program helper: compiles a vertex+fragment pair, links them, and caches uniform locations.
 public sealed class Shader
 {
-    /// <summary>The linked GL program handle.</summary>
     public readonly int Handle;
 
     private readonly Dictionary<string, int> _uniformLocations = new();
@@ -40,13 +34,13 @@ public sealed class Shader
         }
     }
 
-    /// <summary>Bind this shader program for subsequent draws.</summary>
+    // Bind this shader program for subsequent draws
     public void Use()
     {
         GL.UseProgram(Handle);
     }
 
-    /// <summary>Set an int uniform (e.g. a sampler texture unit) by name.</summary>
+    // Set an int uniform (e.g. a sampler texture unit) by name
     public void SetInt(string name, int data)
     {
         GL.UseProgram(Handle);

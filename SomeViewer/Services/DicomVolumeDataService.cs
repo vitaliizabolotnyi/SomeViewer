@@ -1,12 +1,19 @@
-namespace SomeViewer.Volumes;
-
 using OpenTK.Mathematics;
+using SomeViewer.Model;
 
-/// <summary>
-/// Wraps <see cref="DicomFolderLoader"/> behind the <see cref="IVolumeDataService"/>
-/// seam: loads a series as 16-bit voxels and normalizes them to [0,1] so the GPU
-/// texture unit can return filterable floats.
-/// </summary>
+namespace SomeViewer.Services;
+
+// Loads a volume source (a DICOM folder today) into a <see cref="VolumeData"/>.
+// Kept as a seam so the data backend can change without touching the renderer.
+public interface IVolumeDataService
+{
+    // Loads <paramref name="source"/> and returns the series at seriesIndex as a normalized volume.
+    VolumeData Load(string source, int seriesIndex = 0);
+}
+
+// Wraps DicomFolderLoader behind the IVolumeDataService seam:
+// loads a series as 16-bit voxels and normalizes them to [0,1] so
+// the GPU texture unit can return filterable floats.
 public sealed class DicomVolumeDataService : IVolumeDataService
 {
     public VolumeData Load(string source, int seriesIndex = 0)

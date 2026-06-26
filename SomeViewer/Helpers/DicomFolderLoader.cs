@@ -4,7 +4,7 @@ using FellowOakDicom.Imaging.Codec;
 
 namespace SomeViewer;
 
-/// <summary>A single, geometrically sorted DICOM series (one 3D image stack).</summary>
+// A single, geometrically sorted DICOM series (one 3D image stack).
 public sealed class DicomSeries
 {
     public required string SeriesInstanceUid { get; init; }
@@ -22,11 +22,9 @@ public sealed class DicomSeries
     public double SliceSpacing { get; init; } = 1.0;  // between slices (Z)
 }
 
-/// <summary>
-/// Loads a TCIA/NBIA "manifest-*" folder. The folder is a nested
-/// Collection/Patient/Study/Series tree, so instances are discovered recursively,
-/// grouped by Series Instance UID, and sorted along the slice axis.
-/// </summary>
+// Loads a TCIA/NBIA "manifest-*" folder. The folder is a nested
+// Collection/Patient/Study/Series tree, so instances are discovered recursively,
+// grouped by Series Instance UID, and sorted along the slice axis.
 public static class DicomFolderLoader
 {
     public static IReadOnlyList<DicomSeries> LoadFolder(string folderPath)
@@ -81,11 +79,9 @@ public static class DicomFolderLoader
             .ToList();
     }
 
-    /// <summary>
-    /// Copies the whole series into one contiguous 16-bit buffer (z-major),
-    /// decompressing encapsulated transfer syntaxes on the way.
-    /// Requires the fo-dicom.Codecs package for JPEG/JPEG2000 data.
-    /// </summary>
+    // Copies the whole series into one contiguous 16-bit buffer (z-major),
+    // decompressing encapsulated transfer syntaxes on the way.
+    // Requires the fo-dicom.Codecs package for JPEG/JPEG2000 data.
     public static short[] LoadVolumeInt16(DicomSeries series)
     {
         int sliceLength = series.Columns * series.Rows;
