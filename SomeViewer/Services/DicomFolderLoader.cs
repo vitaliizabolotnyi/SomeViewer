@@ -2,7 +2,7 @@ using FellowOakDicom;
 using FellowOakDicom.Imaging;
 using FellowOakDicom.Imaging.Codec;
 
-namespace SomeViewer;
+namespace SomeViewer.Services;
 
 // A single, geometrically sorted DICOM series (one 3D image stack).
 public sealed class DicomSeries

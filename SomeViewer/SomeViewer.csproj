@@ -23,9 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Kernels\SomeKernel.cu">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Kernels\VolumeRender.cu">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
